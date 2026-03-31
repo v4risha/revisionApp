@@ -104,61 +104,61 @@ const navItems = [
 
 const viewMeta = {
   dashboard: {
-    title: "Your dashboard",
-    subtitle: "A cleaner overview of exams, revision, habits, and momentum.",
+    title: "Good things happen when your week is clear.",
+    subtitle: "Plan exams, track progress, build routines, and stay calm with one beautiful dashboard.",
     actions: [
-      { label: "Add task", fn: "openTaskModal" },
+      { label: "Start planning", fn: "openTaskModal" },
       { label: "Add subject", fn: "openSubjectModal", secondary: true }
     ]
   },
   subjects: {
     title: "Subjects",
-    subtitle: "Track exam dates, readiness, and study targets.",
+    subtitle: "Track exam dates, progress, and weekly targets in one clean place.",
     actions: [{ label: "Add subject", fn: "openSubjectModal" }]
   },
   tasks: {
     title: "Tasks",
-    subtitle: "Keep coursework and revision deadlines organised.",
+    subtitle: "Keep revision and coursework organised without the chaos.",
     actions: [{ label: "Add task", fn: "openTaskModal" }]
   },
   notes: {
     title: "Notes",
-    subtitle: "Store revision notes, definitions, formulas, and ideas.",
+    subtitle: "Keep your revision bank tidy, searchable, and ready when you need it.",
     actions: [{ label: "Add note", fn: "openNoteModal" }]
   },
   planner: {
     title: "Planner",
-    subtitle: "Plan study blocks with a cleaner monthly calendar.",
+    subtitle: "Map out your study sessions with a calmer monthly view.",
     actions: [{ label: "Add plan", fn: "openPlannerModal" }]
   },
   exams: {
     title: "Exam countdowns",
-    subtitle: "See what is closest and what needs attention first.",
+    subtitle: "See what is close, what needs attention, and what is under control.",
     actions: [{ label: "Add subject", fn: "openSubjectModal" }]
   },
   timer: {
     title: "Focus timer",
-    subtitle: "Use Pomodoro sessions and log your study time.",
+    subtitle: "Stay in flow, log your effort, and build consistency one session at a time.",
     actions: [{ label: "Log session", fn: "openSessionModal", secondary: true }]
   },
   flashcards: {
     title: "Flashcards",
-    subtitle: "Use active recall in a dedicated clean workspace.",
+    subtitle: "Use active recall in a space that feels focused and distraction-free.",
     actions: [{ label: "Add flashcard", fn: "openFlashcardModal" }]
   },
   goals: {
     title: "Study goals",
-    subtitle: "Track revision targets and consistency.",
+    subtitle: "Set clear targets and keep your momentum visible.",
     actions: [{ label: "Add goal", fn: "openGoalModal" }]
   },
   personal: {
     title: "Personal goals",
-    subtitle: "Track gym, sleep, routines, prayer, health, and life goals.",
+    subtitle: "Track health, faith, routines, and life goals beside your study plan.",
     actions: [{ label: "Add personal goal", fn: "openPersonalGoalModal" }]
   },
   prayer: {
     title: "Prayer times",
-    subtitle: "Load local prayer times using your location.",
+    subtitle: "Keep your day grounded with local prayer times and a calm layout.",
     actions: [{ label: "Load prayer times", fn: "loadPrayerTimes" }]
   }
 };
@@ -350,18 +350,20 @@ function renderSidebarInfo() {
   const exam = nearestExam();
   document.getElementById("sidebarFocusSubject").textContent = exam?.name || "No exam yet";
   document.getElementById("sidebarFocusText").textContent = exam
-    ? `${Math.max(daysUntil(exam.examDate), 0)} days until your nearest exam.`
-    : "Add a subject and your first exam to start planning smarter.";
+    ? `${Math.max(daysUntil(exam.examDate), 0)} days left. This is your closest deadline, so shape this week around it.`
+    : "Add your first subject and exam date to unlock your dashboard flow.";
 }
 
 function renderViewHeader() {
   const meta = viewMeta[state.view];
   const exam = nearestExam();
+  const streak = studyStreak();
+
   const pills = [
     `Today · ${formatLongDate()}`,
     `Overall progress · ${averageProgress()}%`,
-    `Study streak · ${studyStreak()} day${studyStreak() === 1 ? "" : "s"}`,
-    exam ? `Nearest exam · ${exam.name}` : "No exam yet"
+    `Study streak · ${streak} day${streak === 1 ? "" : "s"}`,
+    exam ? `Nearest exam · ${exam.name}` : "No exam added yet"
   ];
 
   document.getElementById("viewHeader").innerHTML = `
@@ -369,7 +371,7 @@ function renderViewHeader() {
       <div>
         <p class="eyebrow">Revision Bloom Pro</p>
         <h2 class="view-title">${escapeHtml(meta.title)}</h2>
-        <p class="panel-subtitle">${escapeHtml(meta.subtitle)}</p>
+        <p class="panel-subtitle" style="max-width:760px;">${escapeHtml(meta.subtitle)}</p>
       </div>
       <div class="quick-actions">
         ${meta.actions
@@ -387,7 +389,7 @@ function renderViewHeader() {
           .join("")}
       </div>
     </div>
-    <div class="header-pills" style="margin-top:14px;">
+    <div class="header-pills" style="margin-top:16px;">
       ${pills.map(pill => `<span class="metric-pill">${escapeHtml(pill)}</span>`).join("")}
     </div>
   `;
@@ -398,6 +400,8 @@ function renderDashboard() {
   const minutes = weeklyMinutes();
   const hours = Math.floor(minutes / 60);
   const mins = minutes % 60;
+  const activeTasks = data.tasks.filter(task => !task.completed).length;
+  const streak = studyStreak();
 
   const upcomingTasks = [...data.tasks]
     .filter(task => !task.completed)
@@ -416,47 +420,60 @@ function renderDashboard() {
         <strong>${averageProgress()}%</strong>
         <p class="tiny">Across all subjects</p>
       </article>
+
       <article class="stat-card">
         <span class="eyebrow">Study time</span>
         <strong>${hours}h ${mins}m</strong>
         <p class="tiny">Logged this week</p>
       </article>
+
       <article class="stat-card">
-        <span class="eyebrow">Active tasks</span>
-        <strong>${data.tasks.filter(task => !task.completed).length}</strong>
-        <p class="tiny">Still to complete</p>
+        <span class="eyebrow">Study streak</span>
+        <strong>${streak}</strong>
+        <p class="tiny">Day${streak === 1 ? "" : "s"} in a row</p>
       </article>
+
       <article class="stat-card">
         <span class="eyebrow">Nearest exam</span>
         <strong>${exam ? Math.max(daysUntil(exam.examDate), 0) : 0}</strong>
-        <p class="tiny">${escapeHtml(exam ? exam.name : "Add a subject")}</p>
+        <p class="tiny">${escapeHtml(exam ? `${exam.name} coming up` : "Add your first subject")}</p>
       </article>
     </section>
 
     <section class="dashboard-focus">
       <article class="hero-panel">
-        <p class="eyebrow">Main focus</p>
-        <h3 style="margin:0 0 8px;">${escapeHtml(exam ? exam.name : "Start by adding your first subject")}</h3>
-        <p class="panel-subtitle">
-          ${
-            exam
-              ? `${Math.max(daysUntil(exam.examDate), 0)} days until your next exam on ${formatDate(exam.examDate)}.`
-              : "Build your dashboard by adding subjects, tasks, notes, and plans."
-          }
-        </p>
+        <div class="hero-accent-line"></div>
+        <div class="hero-top">
+          <div>
+            <p class="eyebrow">Weekly overview</p>
+            <h3 class="dashboard-hero-title">
+              ${escapeHtml(exam ? `Stay ready for ${exam.name}` : "Build your calm study system")}
+            </h3>
+            <p class="panel-subtitle dashboard-hero-copy">
+              ${
+                exam
+                  ? `${Math.max(daysUntil(exam.examDate), 0)} days until your next exam on ${formatDate(exam.examDate)}. Focus on consistency, protect your energy, and keep your week simple.`
+                  : "Add subjects, tasks, notes, and study plans to turn this into a beautiful revision dashboard you will actually want to use."
+              }
+            </p>
+          </div>
+        </div>
 
         <div class="hero-grid">
           <div class="hero-card">
             <p class="eyebrow">Subjects</p>
             <strong class="big-number">${data.subjects.length}</strong>
+            <p class="tiny">Tracked this term</p>
+          </div>
+          <div class="hero-card">
+            <p class="eyebrow">Active tasks</p>
+            <strong class="big-number">${activeTasks}</strong>
+            <p class="tiny">Still waiting on you</p>
           </div>
           <div class="hero-card">
             <p class="eyebrow">Flashcards</p>
             <strong class="big-number">${data.flashcards.length}</strong>
-          </div>
-          <div class="hero-card">
-            <p class="eyebrow">Personal goals</p>
-            <strong class="big-number">${data.personalGoals.length}</strong>
+            <p class="tiny">Ready for recall</p>
           </div>
         </div>
       </article>
@@ -464,15 +481,15 @@ function renderDashboard() {
       <article class="panel">
         <div class="panel-top">
           <div>
-            <h3>Quick actions</h3>
-            <p class="panel-subtitle">Jump straight into planning.</p>
+            <h3>Today’s flow</h3>
+            <p class="panel-subtitle">Small actions that keep everything moving.</p>
           </div>
         </div>
         <div class="stack-actions">
           <button class="primary-btn" type="button" onclick="openTaskModal()">Add task</button>
-          <button class="secondary-btn" type="button" onclick="openPlannerModal()">Add study plan</button>
+          <button class="secondary-btn" type="button" onclick="openPlannerModal()">Add study block</button>
           <button class="secondary-btn" type="button" onclick="openFlashcardModal()">Add flashcard</button>
-          <button class="secondary-btn" type="button" onclick="setView('prayer')">Open prayer times</button>
+          <button class="secondary-btn" type="button" onclick="openSessionModal()">Log study session</button>
         </div>
       </article>
     </section>
@@ -487,15 +504,15 @@ function renderDashboard() {
           <button class="secondary-btn" type="button" onclick="setView('tasks')">See all</button>
         </div>
         <div class="list-grid">
-          ${upcomingTasks.length ? upcomingTasks.map(taskCardCompact).join("") : emptyState("No upcoming tasks yet.")}
+          ${upcomingTasks.length ? upcomingTasks.map(taskCardCompact).join("") : emptyState("No upcoming tasks yet. Add one and start your momentum.")}
         </div>
       </article>
 
       <article class="panel">
         <div class="panel-top">
           <div>
-            <h3>Upcoming plans</h3>
-            <p class="panel-subtitle">Your next study blocks.</p>
+            <h3>Coming up next</h3>
+            <p class="panel-subtitle">Your next planned study blocks.</p>
           </div>
           <button class="secondary-btn" type="button" onclick="setView('planner')">Open planner</button>
         </div>
@@ -519,7 +536,7 @@ function renderDashboard() {
                     `;
                   })
                   .join("")
-              : emptyState("No study plans yet.")
+              : emptyState("No study plans yet. Add one to make your week feel clear.")
           }
         </div>
       </article>
@@ -929,7 +946,7 @@ function renderPrayer() {
         <div class="prayer-head">
           <div>
             <h3>Local prayer times</h3>
-            <p class="panel-subtitle">Uses your current location from this device.</p>
+<p class="panel-subtitle">Load local prayer times with your device location.</p>
           </div>
           <div class="quick-actions">
             <button class="primary-btn" type="button" onclick="loadPrayerTimes()">Load prayer times</button>
@@ -2124,11 +2141,12 @@ async function loadPrayerTimes() {
         }
 
         state.prayerData = {
-          latitude,
-          longitude,
-          locationLabel,
-          timings
-        };
+  latitude,
+  longitude,
+  locationLabel,
+  timings,
+  dateLoaded: todayISO() 
+};
         state.prayerLoading = false;
         state.prayerError = "";
         renderApp();
