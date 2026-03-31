@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Revision Bloom Pro</title>
+  <meta name="theme-color" content="#f7df79" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand-row">
+        <div class="brand">
+          <div class="brand-icon">RB</div>
+          <div>
+            <h1>Revision Bloom <span>Pro</span></h1>
+            <p>Study, exams, habits, goals, prayer</p>
+          </div>
+        </div>
+        <button class="icon-btn mobile-only" id="sidebarToggle" type="button" aria-label="Toggle menu">☰</button>
+      </div>
+
+      <div class="sidebar-inner" id="sidebarInner">
+        <nav class="nav" id="nav"></nav>
+
+        <section class="sidebar-card glass-card">
+          <p class="eyebrow">Focus of the week</p>
+          <h3 id="sidebarFocusSubject">No exam yet</h3>
+          <p id="sidebarFocusText">Add a subject and your first exam to start planning smarter.</p>
+        </section>
+
+        <section class="sidebar-card compact-card">
+          <div class="small-card-row">
+            <span>Saved locally</span>
+            <span class="status-pill good">Safe</span>
+          </div>
+          <p>Your data stays in this browser. No account needed.</p>
+          <div class="stack-actions">
+            <button class="secondary-btn" id="exportBtn" type="button">Export data</button>
+            <button class="secondary-btn" id="importBtn" type="button">Import data</button>
+            <button class="danger-btn" id="resetDataBtn" type="button">Reset all data</button>
+            <input type="file" id="importFile" accept="application/json" hidden />
+          </div>
+        </section>
+      </div>
+    </aside>
+
+    <main class="main">
+      <section class="view-header" id="viewHeader"></section>
+      <section id="viewContainer"></section>
+    </main>
+  </div>
+
+  <div class="modal hidden" id="modal">
+    <div class="modal-panel" id="modalPanel"></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
