@@ -1,4 +1,4 @@
-const STORAGE_KEY = "revisionBloomPro_clean_v1";
+const STORAGE_KEY = "revisionBloomPro_clean_v2";
 
 function uid() {
   return Math.random().toString(36).slice(2, 10);
@@ -15,6 +15,36 @@ function toISODate(date) {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60000)
     .toISOString()
     .split("T")[0];
+}
+
+function parseDateSafe(dateStr) {
+  if (!dateStr) return null;
+  const date = new Date(`${dateStr}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function parseDateTimeSafe(dateStr, timeStr = "00:00") {
+  if (!dateStr) return null;
+  const date = new Date(`${dateStr}T${timeStr}`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function compareDateStrings(a, b) {
+  const da = parseDateSafe(a);
+  const db = parseDateSafe(b);
+  if (!da && !db) return 0;
+  if (!da) return 1;
+  if (!db) return -1;
+  return da - db;
+}
+
+function compareDateTimes(aDate, aTime, bDate, bTime) {
+  const da = parseDateTimeSafe(aDate, aTime);
+  const db = parseDateTimeSafe(bDate, bTime);
+  if (!da && !db) return 0;
+  if (!da) return 1;
+  if (!db) return -1;
+  return da - db;
 }
 
 const defaultData = {
@@ -85,7 +115,8 @@ const state = {
   prayerLoading: false,
   prayerError: "",
   prayerData: null,
-  sidebarOpen: false
+  sidebarOpen: false,
+  plannerMonthOffset: 0
 };
 
 const navItems = [
@@ -182,7 +213,8 @@ function getSubject(id) {
 
 function formatDate(dateStr) {
   if (!dateStr) return "No date";
-  const date = new Date(`${dateStr}T00:00:00`);
+  const date = parseDateSafe(dateStr);
+  if (!date) return "No date";
   return date.toLocaleDateString(undefined, {
     day: "numeric",
     month: "short",
@@ -198,12 +230,6 @@ function formatLongDate() {
   });
 }
 
-function formatTime(dateTime) {
-  return new Date(dateTime).toLocaleTimeString(undefined, {
-    hour: "2-digit",
-    minute: "2-digit"
-  });
-}
 function formatPlannerNow(date) {
   return {
     date: date.toLocaleDateString(undefined, {
@@ -220,8 +246,9 @@ function formatPlannerNow(date) {
 }
 
 function daysUntil(dateStr) {
-  if (!dateStr) return 0;
-  const target = new Date(`${dateStr}T00:00:00`);
+  const target = parseDateSafe(dateStr);
+  if (!target) return 0;
+
   const now = new Date();
   now.setHours(0, 0, 0, 0);
   return Math.ceil((target - now) / 86400000);
@@ -244,7 +271,10 @@ function weeklyMinutes() {
   start.setHours(0, 0, 0, 0);
 
   return data.sessions
-    .filter(session => new Date(`${session.date}T00:00:00`) >= start)
+    .filter(session => {
+      const sessionDate = parseDateSafe(session.date);
+      return sessionDate && sessionDate >= start;
+    })
     .reduce((sum, session) => sum + Number(session.duration || 0), 0);
 }
 
@@ -275,9 +305,9 @@ function totalHoursBySubject(subjectId) {
 function nearestExam() {
   const exams = [...data.subjects]
     .filter(subject => subject.examDate)
-    .sort((a, b) => daysUntil(a.examDate) - daysUntil(b.examDate));
+    .sort((a, b) => compareDateStrings(a.examDate, b.examDate));
 
-  return exams[0] || null;
+  return exams.find(subject => daysUntil(subject.examDate) >= 0) || exams[0] || null;
 }
 
 function completedGoalsCount() {
@@ -310,6 +340,9 @@ function capitalize(text) {
 
 function setView(view) {
   state.view = view;
+  if (view !== "planner") {
+    state.plannerMonthOffset = 0;
+  }
   if (window.innerWidth <= 760) {
     state.sidebarOpen = false;
     syncSidebar();
@@ -325,6 +358,8 @@ function requireSubjectFirst() {
 
 function renderNav() {
   const nav = document.getElementById("nav");
+  if (!nav) return;
+
   nav.innerHTML = navItems
     .map(
       item => `
@@ -348,8 +383,12 @@ function renderNav() {
 
 function renderSidebarInfo() {
   const exam = nearestExam();
-  document.getElementById("sidebarFocusSubject").textContent = exam?.name || "No exam yet";
-  document.getElementById("sidebarFocusText").textContent = exam
+  const subjectEl = document.getElementById("sidebarFocusSubject");
+  const textEl = document.getElementById("sidebarFocusText");
+  if (!subjectEl || !textEl) return;
+
+  subjectEl.textContent = exam?.name || "No exam yet";
+  textEl.textContent = exam
     ? `${Math.max(daysUntil(exam.examDate), 0)} days left. This is your closest deadline, so shape this week around it.`
     : "Add your first subject and exam date to unlock your dashboard flow.";
 }
@@ -366,7 +405,10 @@ function renderViewHeader() {
     exam ? `Nearest exam · ${exam.name}` : "No exam added yet"
   ];
 
-  document.getElementById("viewHeader").innerHTML = `
+  const header = document.getElementById("viewHeader");
+  if (!header) return;
+
+  header.innerHTML = `
     <div class="view-header-top">
       <div>
         <p class="eyebrow">Revision Bloom Pro</p>
@@ -405,13 +447,18 @@ function renderDashboard() {
 
   const upcomingTasks = [...data.tasks]
     .filter(task => !task.completed)
-    .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))
+    .sort((a, b) => compareDateStrings(a.dueDate, b.dueDate))
     .slice(0, 4);
 
   const upcomingPlans = [...data.planner]
-    .sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`))
-    .filter(plan => `${plan.date}T${plan.time}` >= `${todayISO()}T00:00`)
+    .filter(plan => {
+      const dt = parseDateTimeSafe(plan.date, plan.time);
+      return dt && dt >= parseDateTimeSafe(todayISO(), "00:00");
+    })
+    .sort((a, b) => compareDateTimes(a.date, a.time, b.date, b.time))
     .slice(0, 4);
+
+  const priorityTask = upcomingTasks[0] || null;
 
   return `
     <section class="stats-grid">
@@ -485,6 +532,17 @@ function renderDashboard() {
             <p class="panel-subtitle">Small actions that keep everything moving.</p>
           </div>
         </div>
+
+        <div class="list-grid" style="margin-top:14px;">
+          <div class="item-card">
+            <strong>${escapeHtml(priorityTask ? priorityTask.title : "No urgent task yet")}</strong>
+            <div class="item-meta">
+              <span>${escapeHtml(priorityTask ? formatDate(priorityTask.dueDate) : "You’re caught up")}</span>
+              <span>${escapeHtml(priorityTask ? priorityTask.priority : "Nice work")}</span>
+            </div>
+          </div>
+        </div>
+
         <div class="stack-actions">
           <button class="primary-btn" type="button" onclick="openTaskModal()">Add task</button>
           <button class="secondary-btn" type="button" onclick="openPlannerModal()">Add study block</button>
@@ -545,7 +603,7 @@ function renderDashboard() {
 }
 
 function renderSubjects() {
-  const sorted = [...data.subjects].sort((a, b) => daysUntil(a.examDate) - daysUntil(b.examDate));
+  const sorted = [...data.subjects].sort((a, b) => compareDateStrings(a.examDate, b.examDate));
 
   return `
     <section class="panel">
@@ -565,7 +623,7 @@ function renderTasks() {
       return true;
     })
     .filter(task => (state.subjectFilter === "all" ? true : task.subjectId === state.subjectFilter))
-    .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+    .sort((a, b) => compareDateStrings(a.dueDate, b.dueDate));
 
   return `
     <section class="panel">
@@ -629,9 +687,29 @@ function renderNotes() {
   `;
 }
 
-function renderPlanner() {
-  const plans = [...data.planner].sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`));
+function getPlannerMonthDate() {
   const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth() + state.plannerMonthOffset, 1);
+}
+
+function renderPlanner() {
+  const plans = [...data.planner].sort((a, b) => compareDateTimes(a.date, a.time, b.date, b.time));
+  const now = new Date();
+  const monthDate = getPlannerMonthDate();
+
+  const monthPlans = plans.filter(plan => {
+    const date = parseDateSafe(plan.date);
+    return (
+      date &&
+      date.getFullYear() === monthDate.getFullYear() &&
+      date.getMonth() === monthDate.getMonth()
+    );
+  });
+
+  const monthExamCount = data.subjects.filter(subject => {
+    const d = parseDateSafe(subject.examDate);
+    return d && d.getFullYear() === monthDate.getFullYear() && d.getMonth() === monthDate.getMonth();
+  }).length;
 
   return `
     <section class="two-col planner-layout">
@@ -659,9 +737,19 @@ function renderPlanner() {
       <article class="calendar-card planner-calendar-panel">
         <div class="panel-top">
           <div>
-            <h3>${now.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</h3>
-            <p class="panel-subtitle">A cleaner monthly calendar with evenly sized day blocks.</p>
+            <h3>${monthDate.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</h3>
+            <p class="panel-subtitle">A calmer monthly calendar with cleaner day cards.</p>
           </div>
+          <div class="quick-actions">
+            <button class="secondary-btn" type="button" onclick="changePlannerMonth(-1)">Prev</button>
+            <button class="secondary-btn" type="button" onclick="goToCurrentPlannerMonth()">Today</button>
+            <button class="secondary-btn" type="button" onclick="changePlannerMonth(1)">Next</button>
+          </div>
+        </div>
+
+        <div class="item-meta" style="margin:14px 0 0;">
+          <span>${monthPlans.length} plan${monthPlans.length === 1 ? "" : "s"} this month</span>
+          <span>${monthExamCount} exam${monthExamCount === 1 ? "" : "s"} this month</span>
         </div>
 
         ${calendarTemplate()}
@@ -669,8 +757,9 @@ function renderPlanner() {
     </section>
   `;
 }
+
 function renderExams() {
-  const exams = [...data.subjects].sort((a, b) => daysUntil(a.examDate) - daysUntil(b.examDate));
+  const exams = [...data.subjects].sort((a, b) => compareDateStrings(a.examDate, b.examDate));
 
   return `
     <section class="exam-grid">
@@ -788,7 +877,7 @@ function renderTimer() {
           ${
             data.sessions.length
               ? [...data.sessions]
-                  .sort((a, b) => new Date(b.date) - new Date(a.date))
+                  .sort((a, b) => compareDateStrings(b.date, a.date))
                   .slice(0, 6)
                   .map(sessionCard)
                   .join("")
@@ -812,6 +901,7 @@ function renderFlashcards() {
 
   const card = filteredCards.find(item => item.id === state.currentFlashcardId);
   const subject = card ? getSubject(card.subjectId) : null;
+  const currentIndex = filteredCards.findIndex(item => item.id === state.currentFlashcardId);
 
   return `
     <section class="two-col">
@@ -836,6 +926,9 @@ function renderFlashcards() {
                 <p class="eyebrow">${escapeHtml(subject ? subject.name : "Flashcard")}</p>
                 <h3>${escapeHtml(state.flashcardShowingBack ? card.back : card.front)}</h3>
                 <p class="note-preview">${state.flashcardShowingBack ? "Back of card" : "Front of card"}</p>
+                <div class="item-meta" style="justify-content:center;">
+                  <span>Card ${currentIndex + 1} of ${filteredCards.length}</span>
+                </div>
                 <div class="quick-actions" style="justify-content:center; margin-top:16px;">
                   <button class="primary-btn" type="button" onclick="flipFlashcard()">${state.flashcardShowingBack ? "Show front" : "Show answer"}</button>
                   <button class="secondary-btn" type="button" onclick="nextFlashcard()">Next card</button>
@@ -946,7 +1039,7 @@ function renderPrayer() {
         <div class="prayer-head">
           <div>
             <h3>Local prayer times</h3>
-<p class="panel-subtitle">Load local prayer times with your device location.</p>
+            <p class="panel-subtitle">Load local prayer times with your device location.</p>
           </div>
           <div class="quick-actions">
             <button class="primary-btn" type="button" onclick="loadPrayerTimes()">Load prayer times</button>
@@ -1261,9 +1354,9 @@ function streakVisual() {
 }
 
 function calendarTemplate() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
+  const monthDate = getPlannerMonthDate();
+  const year = monthDate.getFullYear();
+  const month = monthDate.getMonth();
   const todayKey = todayISO();
 
   const first = new Date(year, month, 1);
@@ -1290,18 +1383,26 @@ function calendarTemplate() {
     const date = new Date(year, month, dayNum);
     const key = toISODate(date);
 
-    const plans = data.planner.filter(plan => plan.date === key).slice(0, 2);
-    const exams = data.subjects.filter(subject => subject.examDate === key).slice(0, 1);
+    const plans = data.planner
+      .filter(plan => plan.date === key)
+      .sort((a, b) => compareDateTimes(a.date, a.time, b.date, b.time));
+
+    const exams = data.subjects.filter(subject => subject.examDate === key);
+    const visiblePlans = plans.slice(0, 2);
+    const visibleExams = exams.slice(0, 1);
+    const hiddenCount = plans.length + exams.length - visiblePlans.length - visibleExams.length;
 
     html += `
       <div class="calendar-day ${key === todayKey ? "today" : ""}">
         <div class="calendar-day-top">
           <span class="calendar-day-number">${dayNum}</span>
+          ${key === todayKey ? `<span class="calendar-day-meta">Today</span>` : ""}
         </div>
 
         <div class="calendar-day-content">
-          ${exams.map(subject => `<div class="calendar-exam">${escapeHtml(subject.name)}</div>`).join("")}
-          ${plans.map(plan => `<div class="calendar-event">${escapeHtml(plan.time)} · ${escapeHtml(plan.title)}</div>`).join("")}
+          ${visibleExams.map(subject => `<div class="calendar-exam">${escapeHtml(subject.name)} exam</div>`).join("")}
+          ${visiblePlans.map(plan => `<div class="calendar-event">${escapeHtml(plan.time)} · ${escapeHtml(plan.title)}</div>`).join("")}
+          ${hiddenCount > 0 ? `<div class="calendar-more">+${hiddenCount} more</div>` : ""}
         </div>
       </div>
     `;
@@ -1312,13 +1413,23 @@ function calendarTemplate() {
 }
 
 function openModal(html) {
-  document.getElementById("modalPanel").innerHTML = html;
-  document.getElementById("modal").classList.remove("hidden");
+  const panel = document.getElementById("modalPanel");
+  const modal = document.getElementById("modal");
+  if (!panel || !modal) return;
+
+  panel.innerHTML = html;
+  modal.classList.remove("hidden");
+  modal.setAttribute("aria-hidden", "false");
 }
 
 function closeModal() {
-  document.getElementById("modal").classList.add("hidden");
-  document.getElementById("modalPanel").innerHTML = "";
+  const panel = document.getElementById("modalPanel");
+  const modal = document.getElementById("modal");
+  if (!panel || !modal) return;
+
+  modal.classList.add("hidden");
+  modal.setAttribute("aria-hidden", "true");
+  panel.innerHTML = "";
 }
 
 function subjectOptions(selectedId) {
@@ -1634,13 +1745,14 @@ function openSessionModal() {
   };
 }
 
-function openFlashcardModal() {
+function openFlashcardModal(id = null) {
   if (requireSubjectFirst()) return;
+  const card = id ? data.flashcards.find(item => item.id === id) : null;
 
   openModal(`
     <div class="modal-top">
       <div>
-        <h2>Add flashcard</h2>
+        <h2>${card ? "Edit flashcard" : "Add flashcard"}</h2>
         <p class="tiny muted">Create a front and back recall card.</p>
       </div>
       <button class="secondary-btn" type="button" onclick="closeModal()">Close</button>
@@ -1649,18 +1761,18 @@ function openFlashcardModal() {
     <form id="flashcardForm" class="form-grid" style="margin-top:16px;">
       <div class="span-4">
         <label class="tiny muted">Subject</label>
-        <select class="select" name="subjectId">${subjectOptions(data.subjects[0]?.id)}</select>
+        <select class="select" name="subjectId">${subjectOptions(card?.subjectId || data.subjects[0]?.id)}</select>
       </div>
       <div class="span-12">
         <label class="tiny muted">Front</label>
-        <input class="input" name="front" required />
+        <input class="input" name="front" required value="${card ? escapeHtml(card.front) : ""}" />
       </div>
       <div class="span-12">
         <label class="tiny muted">Back</label>
-        <textarea class="textarea" name="back" required></textarea>
+        <textarea class="textarea" name="back" required>${card ? escapeHtml(card.back) : ""}</textarea>
       </div>
       <div class="span-12 row" style="justify-content:flex-end;">
-        <button class="primary-btn" type="submit">Create flashcard</button>
+        <button class="primary-btn" type="submit">${card ? "Save flashcard" : "Create flashcard"}</button>
       </div>
     </form>
   `);
@@ -1670,7 +1782,7 @@ function openFlashcardModal() {
     const form = new FormData(event.target);
 
     const payload = {
-      id: uid(),
+      id: card?.id || uid(),
       subjectId: String(form.get("subjectId")),
       front: String(form.get("front")).trim(),
       back: String(form.get("back")).trim()
@@ -1678,9 +1790,13 @@ function openFlashcardModal() {
 
     if (!payload.front || !payload.back) return;
 
-    data.flashcards.unshift(payload);
-    state.currentFlashcardId = payload.id;
-    state.flashcardShowingBack = false;
+    if (card) {
+      data.flashcards = data.flashcards.map(item => (item.id === card.id ? payload : item));
+    } else {
+      data.flashcards.unshift(payload);
+      state.currentFlashcardId = payload.id;
+      state.flashcardShowingBack = false;
+    }
 
     saveData();
     closeModal();
@@ -2021,6 +2137,7 @@ function resetData() {
   state.prayerLoading = false;
   state.prayerError = "";
   state.prayerData = null;
+  state.plannerMonthOffset = 0;
 
   saveData();
   renderApp();
@@ -2065,13 +2182,28 @@ function handleImportFile(event) {
 
 function syncSidebar() {
   const sidebar = document.getElementById("sidebar");
+  const toggle = document.getElementById("sidebarToggle");
   if (!sidebar) return;
+
   sidebar.classList.toggle("open", state.sidebarOpen);
+  if (toggle) {
+    toggle.setAttribute("aria-expanded", String(state.sidebarOpen));
+  }
 }
 
 function toggleSidebar() {
   state.sidebarOpen = !state.sidebarOpen;
   syncSidebar();
+}
+
+function changePlannerMonth(step) {
+  state.plannerMonthOffset += step;
+  renderApp();
+}
+
+function goToCurrentPlannerMonth() {
+  state.plannerMonthOffset = 0;
+  renderApp();
 }
 
 async function loadPrayerTimes() {
@@ -2137,16 +2269,16 @@ async function loadPrayerTimes() {
             if (pretty) locationLabel = pretty;
           }
         } catch {
-          // keep fallback location label
+          // keep fallback label
         }
 
         state.prayerData = {
-  latitude,
-  longitude,
-  locationLabel,
-  timings,
-  dateLoaded: todayISO() 
-};
+          latitude,
+          longitude,
+          locationLabel,
+          timings,
+          dateLoaded: todayISO()
+        };
         state.prayerLoading = false;
         state.prayerError = "";
         renderApp();
@@ -2204,7 +2336,13 @@ function bindStaticActions() {
 
   if (modal) {
     modal.onclick = event => {
-      if (event.target.id === "modal") closeModal();
+      if (
+        event.target.id === "modal" ||
+        event.target.classList.contains("modal-backdrop") ||
+        event.target.dataset.closeModal === "true"
+      ) {
+        closeModal();
+      }
     };
   }
 }
@@ -2270,17 +2408,17 @@ window.toggleTimer = toggleTimer;
 window.resetTimer = resetTimer;
 window.loadPrayerTimes = loadPrayerTimes;
 window.openNearbyMosques = openNearbyMosques;
+window.changePlannerMonth = changePlannerMonth;
+window.goToCurrentPlannerMonth = goToCurrentPlannerMonth;
 
 setInterval(() => {
   const today = todayISO();
 
-  // refresh prayer times daily
   if (state.prayerData && state.prayerData.dateLoaded !== today) {
     state.prayerData = null;
   }
 
-  // re-render key views
-  if (state.view === "planner" || state.view === "dashboard") {
+  if (state.view === "planner" || state.view === "dashboard" || state.view === "prayer") {
     renderApp();
   }
 }, 30000);
